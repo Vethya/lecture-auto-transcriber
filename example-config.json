@@ -1,0 +1,22 @@
+{
+  "subjects": {
+    "research methodology": {
+      "recording_folder_id": "YOUR_RECORDING_FOLDER_ID"
+    },
+    "mathematics": {
+      "recording_folder_id": "YOUR_RECORDING_FOLDER_ID"
+    },
+    "data science": {
+      "recording_folder_id": "YOUR_RECORDING_FOLDER_ID"
+    },
+    "cloud computing": {
+      "recording_folder_id": "YOUR_RECORDING_FOLDER_ID"
+    },
+    "project development": {
+      "recording_folder_id": "YOUR_RECORDING_FOLDER_ID"
+    }
+  },
+  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "mongodb_uri": "mongodb://localhost:27017",
+  "drive_credentials": "credentials.json"
+}
