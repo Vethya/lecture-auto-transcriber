@@ -29,82 +29,15 @@ processed_collection = db['processed_videos']
 # Load Whisper model
 model = whisper.load_model("tiny.en")
 
-def transcribe_with_ffmpeg_preprocessing(video_path):
-    """Transcribe a video with ffmpeg preprocessing to ensure audio compatibility."""
-    try:
-        # Extract filename without extension
-        base_name = os.path.splitext(os.path.basename(video_path))[0]
-        audio_path = f"temp_audio_{base_name}.wav"
-        
-        # Use ffmpeg to extract audio in a format Whisper can handle reliably
-        import subprocess
-        cmd = [
-            "ffmpeg", "-i", video_path, 
-            "-vn",  # No video
-            "-acodec", "pcm_s16le",  # PCM 16-bit audio
-            "-ar", "16000",  # 16kHz sample rate
-            "-ac", "1",  # Mono
-            "-af", "dynaudnorm",  # Normalize audio (helps with volume issues)
-            "-y",  # Overwrite output file if it exists
-            audio_path
-        ]
-        
-        # Run ffmpeg command
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        # Check if the audio file was created
-        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
-            # First try with tiny.en model
-            try:
-                # Transcribe with verbose=False to avoid excessive output
-                result = model.transcribe(audio_path, verbose=False)
-                
-                # Format text with line breaks by segments
-                formatted_text = ""
-                for segment in result["segments"]:
-                    # Add each segment as a separate paragraph
-                    formatted_text += f"{segment['text'].strip()}\n"
-                
-                os.remove(audio_path)
-                return formatted_text
-                    
-            except Exception as e:
-                # If we get a specific error related to tensor reshaping, try base model
-                if "reshape tensor" in str(e) or "Linear" in str(e):
-                    print(f"First attempt failed, trying with base.en model...")
-                    try:
-                        # Load a different model that might work better
-                        base_model = whisper.load_model("base.en")
-                        result = base_model.transcribe(audio_path, verbose=False)
-                        
-                        # Format text with line breaks
-                        formatted_text = ""
-                        for segment in result["segments"]:
-                            formatted_text += f"{segment['text'].strip()}\n\n"
-                        
-                        os.remove(audio_path)
-                        return formatted_text
-                    except Exception as e2:
-                        print(f"⚠️ Second transcription attempt failed: {str(e2)}")
-                        os.remove(audio_path)
-                        return None
-                else:
-                    print(f"⚠️ Transcription error: {str(e)}")
-                    os.remove(audio_path)
-                    return None
-        else:
-            print(f"⚠️ Failed to extract audio from {os.path.basename(video_path)}")
-            return None
-    except Exception as e:
-        print(f"⚠️ Error preprocessing audio for {os.path.basename(video_path)}: {str(e)}")
-        # Clean up temp audio file if it exists
-        if 'audio_path' in locals() and os.path.exists(audio_path):
-            os.remove(audio_path)
-        return None
-
 async def download_video(file_id, file_name):
     """Download a video file from Google Drive with retries."""
     temp_video = f"temp_{file_name}"
+    
+    # Check if video file already exists
+    if os.path.exists(temp_video) and os.path.getsize(temp_video) > 0:
+        print(f"Using existing video file: {temp_video}")
+        return temp_video
+        
     request = service.files().get_media(fileId=file_id)
     max_retries = 3
     retry_count = 0
@@ -127,6 +60,84 @@ async def download_video(file_id, file_name):
             else:
                 print(f"Failed to download {file_name} after {max_retries} attempts: {e}")
                 raise
+
+def transcribe_with_ffmpeg_preprocessing(video_path):
+    """Transcribe a video with ffmpeg preprocessing to ensure audio compatibility."""
+    try:
+        # Extract filename without extension
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        audio_path = f"temp_audio_{base_name}.wav"
+        
+        # Check if audio file already exists
+        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+            print(f"Using existing audio file: {audio_path}")
+        else:
+            # Use ffmpeg to extract audio in a format Whisper can handle reliably
+            import subprocess
+            cmd = [
+                "ffmpeg", "-i", video_path, 
+                "-vn",  # No video
+                "-acodec", "pcm_s16le",  # PCM 16-bit audio
+                "-ar", "16000",  # 16kHz sample rate
+                "-ac", "1",  # Mono
+                "-af", "dynaudnorm",  # Normalize audio (helps with volume issues)
+                "-y",  # Overwrite output file if it exists
+                audio_path
+            ]
+            
+            # Run ffmpeg command
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Check if the audio file was created
+        if os.path.exists(audio_path) and os.path.getsize(audio_path) > 0:
+            # First try with tiny.en model
+            try:
+                # Transcribe with verbose=False to avoid excessive output
+                result = model.transcribe(audio_path, verbose=False)
+                
+                # Format text with line breaks by segments
+                formatted_text = ""
+                for segment in result["segments"]:
+                    # Add each segment as a separate paragraph
+                    formatted_text += f"{segment['text'].strip()}\n"
+                
+                # Don't remove audio file anymore since we want to keep it for reuse
+                # os.remove(audio_path)
+                return formatted_text
+                    
+            except Exception as e:
+                # If we get a specific error related to tensor reshaping, try base model
+                if "reshape tensor" in str(e) or "Linear" in str(e):
+                    print(f"First attempt failed, trying with base.en model...")
+                    try:
+                        # Load a different model that might work better
+                        base_model = whisper.load_model("base.en")
+                        result = base_model.transcribe(audio_path, verbose=False)
+                        
+                        # Format text with line breaks
+                        formatted_text = ""
+                        for segment in result["segments"]:
+                            formatted_text += f"{segment['text'].strip()}\n\n"
+                        
+                        # Don't remove audio file anymore since we want to keep it for reuse
+                        # os.remove(audio_path)
+                        return formatted_text
+                    except Exception as e2:
+                        print(f"⚠️ Second transcription attempt failed: {str(e2)}")
+                        # Don't remove audio file anymore since we want to keep it for reuse
+                        # os.remove(audio_path)
+                        return None
+                else:
+                    print(f"⚠️ Transcription error: {str(e)}")
+                    # Don't remove audio file anymore since we want to keep it for reuse
+                    # os.remove(audio_path)
+                    return None
+        else:
+            print(f"⚠️ Failed to extract audio from {os.path.basename(video_path)}")
+            return None
+    except Exception as e:
+        print(f"⚠️ Error preprocessing audio for {os.path.basename(video_path)}: {str(e)}")
+        return None
 
 async def transcribe_multiple_videos(video_paths):
     """Transcribe multiple videos in parallel using a thread pool."""
